@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 587
-app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME') 
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 
@@ -20,27 +20,113 @@ CORS(app)
 
 @app.route('/send-to-student-mail', methods=['POST'])
 def send_to_student_mail():
-    try:
-        data = request.json
-        teacher_name = data.get('teacher_name')
-        quiz_code = data.get('quiz_code')
-        student_email = data.get('student_email')
+	try:
+		data = request.json
+		teacher_name = data.get('teacher_name')
+		teacher_email = data.get('teacher_email')
+		quiz_name = data.get('quiz_name')
+		quiz_code = data.get('quiz_code')
+		student_email = data.get('student_email')
 
-        if not teacher_name or not quiz_code or not student_email:
-            return jsonify({'error': 'Missing required fields'}), 400
+		if not teacher_name or not quiz_code or not student_email:
+				return jsonify({'error': 'Missing required fields'}), 400
 
-        sender_email = app.config['MAIL_USERNAME']
-        subject = f'Regarding Quiz {quiz_code}'
-        body = f'Hello {teacher_name},\n\nThis is a notification regarding Quiz {quiz_code}. Please reach out to {student_email} for further details.'
+		sender_email = app.config['MAIL_USERNAME']
+		subject = f'Regarding on the Quiz {quiz_name}'
+		body = f'Hello I am {teacher_name},\n\nThis is a notification regarding Quiz {quiz_name}. Please paste this code {quiz_code} to take this quiz on KWIZANIA. Please reach out to my mailing address {teacher_email} for further details.'
 
-        msg = Message(subject=subject, sender=sender_email, recipients=[student_email], body=body)
+		msg = Message(subject=subject, sender=sender_email, recipients=[student_email], body=body)
 
-        mail.send(msg)
+		mail.send(msg)
 
-        return jsonify({'message': 'Email sent successfully'}), 200
+		return jsonify({'message': 'Email sent successfully'}), 200
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@app.route('/send-class-invite', methods=['POST'])
+def send_class_invite():
+	try:
+		data = request.json
+		student_email = data.get('student_email')
+		teacher_name = data.get('teacher_name')
+		teacher_email = data.get('teacher_email')
+		class_title = data.get('class_title')
+		class_code = data.get('class_code')
+
+		if not teacher_name or not class_code or not class_title or not teacher_email or not student_email:
+			return jsonify({'error': 'Missing required fields'}), 400
+		
+		sender_email = app.config['MAIL_USERNAME']
+		subject = f'Invitation to join {class_title}'
+		body = f'Hello, I am {teacher_name}. I would like to invite you to join my class "{class_title}" on KWIZANIA. Please use the following code to join the class: {class_code}. If you have any questions, please reach out to me at {teacher_email}.'
+
+		msg = Message(subject=subject, sender=sender_email, recipients=[student_email], body=body)
+
+		mail.send(msg)
+
+		return jsonify({'message': 'Email sent successfully'}), 200
+	
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+	
+
+
+
+
+@app.route('/send-lecture', methods=['POST'])
+def send_lecture():
+	try:
+		data = request.json
+		teacher_name = data.get('teacher_name')
+		quiz_name = data.get('quiz_name')
+		student_name = data.get('student_name')
+		teacher_email = data.get('teacher_email')
+		body = data.get('body')  # Body can be lesson text or a message
+
+		# Check if attachment is provided as a file path or URL
+		attachment = data.get('attachment')
+		attachment_info = None
+
+		if attachment:
+			if attachment.startswith('http://') or attachment.startswith('https://'):
+				attachment_info = attachment  # Store link to attachment
+			else:
+				# Assuming attachment is a file path
+				if os.path.exists(attachment):
+					attachment_size = os.path.getsize(attachment)
+					if attachment_size > 20 * 1024 * 1024:  # 20 MB limit
+						return jsonify({'error': 'Attachment is too large, provide a link instead'}), 400
+					attachment_info = attachment  # Store file path to attachment
+				else:
+					return jsonify({'error': 'Attachment file not found'}), 400
+
+		if not teacher_name or not quiz_name or not teacher_email:
+			return jsonify({'error': 'Missing required fields'}), 400
+
+		sender_email = app.config['MAIL_USERNAME']
+		subject = f'Lecture and Reading Materials for {quiz_name}'
+		recipient_email = teacher_email  # Sending to the teacher's email
+
+		# Create Message object
+		msg = Message(subject=subject, sender=sender_email, recipients=[recipient_email])
+
+		# Compose email body
+		msg.body = f'Hello {student_name},\n\nThis is an email from your teacher {teacher_name} regarding Quiz "{quiz_name}". {body}\n\nPlease review the attached materials.'
+
+		# Attach file if provided
+		if attachment_info:
+			with app.open_resource(attachment_info) as attachment_file:
+				msg.attach(attachment_info, attachment_file.read(), 'application/octet-stream')
+
+		# Send email
+		mail.send(msg)
+
+		return jsonify({'message': 'Email sent successfully'}), 200
+
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+	app.run(debug=True)
