@@ -3,6 +3,9 @@ from flask_mail import Mail, Message
 from dotenv import load_dotenv
 import os
 from flask_cors import CORS
+import mysql.connector
+from mysql.connector import errorcode
+import time
 
 load_dotenv()
 
@@ -18,31 +21,62 @@ mail = Mail(app)
 
 CORS(app)
 
-@app.route('/send-to-student-mail', methods=['POST'])
+@app.route('/send-quiz-to-class', methods=['POST'])
 def send_to_student_mail():
 	try:
 		data = request.json
 		teacher_name = data.get('teacher_name')
 		teacher_email = data.get('teacher_email')
+		class_name = data.get('class_name')
+		quiz_id = data.get('quiz_id')
 		quiz_name = data.get('quiz_name')
 		quiz_code = data.get('quiz_code')
-		student_email = data.get('student_email')
+		class_id = data.get('class_id')
 
-		if not teacher_name or not quiz_code or not student_email:
-				return jsonify({'error': 'Missing required fields'}), 400
+		# Check if required fields are provided
+		print(data)
+
+		if not teacher_name or not teacher_email or not class_name or not quiz_name or not quiz_code or not class_id or not quiz_id:
+			return jsonify({'error': 'Missing required fields'}), 400
+
+		# Connect to the database
+		db_connection = mysql.connector.connect(
+			user=os.getenv('USER'),
+			password=os.getenv('PASSWORD'),
+			port=os.getenv('PORT'),
+			database='kwizania_onlinequizdb'
+		)
+
+		cursor = db_connection.cursor()
+
+		# Retrieve all student emails for the specified class
+		get_all_student_emails = "SELECT u.email FROM users_table u JOIN enrollment_table e ON u.user_id = e.student_id WHERE e.class_id = %s AND u.role = 'student'"
+		cursor.execute(get_all_student_emails, (class_id,))
+		student_emails = [row[0] for row in cursor.fetchall()]
+
+		if not student_emails:
+			return jsonify({'error': 'No students found in this class'}), 404
 
 		sender_email = app.config['MAIL_USERNAME']
-		subject = f'Regarding on the Quiz {quiz_name}'
-		body = f'Hello I am {teacher_name},\n\nThis is a notification regarding Quiz {quiz_name}. Please paste this code {quiz_code} to take this quiz on KWIZANIA. Please reach out to my mailing address {teacher_email} for further details.'
+		subject = f'Regarding the Quiz {quiz_name}'
+		body = f"Hello {teacher_name},\n\nThis is a notification regarding the upcoming quiz '{quiz_name}' for the Class {class_name} on KWIZANIA. Please use the following code to access the quiz: {quiz_code}.\n\nIf you have any questions or need further details, please feel free to contact me at {teacher_email}.\n\nThank you and best regards,\n{teacher_name}"
 
-		msg = Message(subject=subject, sender=sender_email, recipients=[student_email], body=body)
+		# Send email to all student emails retrieved from the database
+		for student_email in student_emails:
+			msg = Message(subject=subject, sender=sender_email, recipients=[student_email], body=body)
+			mail.send(msg)
+			print(f"Email sent successfully to {student_email}")
+			time.sleep(5)  # Sleep for 5 second to avoid rate limiting
 
-		mail.send(msg)
+		cursor.close()
+		db_connection.close()
 
-		return jsonify({'message': 'Email sent successfully'}), 200
+		return jsonify({'message': f'Emails sent successfully to {len(student_emails)} students'}), 200
 
 	except Exception as e:
 		return jsonify({'error': str(e)}), 500
+
+
 
 
 @app.route('/send-class-invite', methods=['POST'])
